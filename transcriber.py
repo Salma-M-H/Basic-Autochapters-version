@@ -199,41 +199,35 @@ def transcribe(audio_path: str, client) -> str:
 
 
 def download_audio_from_youtube(url: str, output_path: str) -> None:
-    """Download audio from a YouTube URL and save as MP3 using yt-dlp."""
+    """Download audio from a YouTube URL and save as MP3 using pytubefix."""
+    try:
+        from pytubefix import YouTube
+    except ImportError:
+        raise RuntimeError("pytubefix not installed. Run: pip install pytubefix")
+
     print(f"[1/2] Downloading audio from YouTube: {url}")
 
-    ffmpeg_dir   = str(Path(FFMPEG_PATH).parent) if FFMPEG_PATH != "ffmpeg" else None
-    cookies_file = os.getenv("YTDLP_COOKIES_FILE")          # e.g. /app/cookies.txt
-    cookies_browser = os.getenv("YTDLP_COOKIES_BROWSER")    # e.g. "chrome" or "firefox"
+    yt     = YouTube(url)
+    stream = yt.streams.get_audio_only()
+    if not stream:
+        raise RuntimeError("No audio stream found for this YouTube URL.")
 
-    cmd = [
-        "yt-dlp",
-        "--extract-audio",
-        "--audio-format", "mp3",
-        "--audio-quality", "0",
-        "--no-playlist",
-        "--output", output_path,
-    ]
+    # pytubefix downloads to a directory; we control filename via output_path
+    out_dir      = str(Path(output_path).parent)
+    tmp_filename = "yt_audio_tmp"
+    downloaded   = stream.download(output_path=out_dir, filename=tmp_filename)
 
-    # ── Authentication: cookies file takes priority over browser ──
-    if cookies_file and Path(cookies_file).is_file():
-        cmd += ["--cookies", cookies_file]
-        print(f"      Using cookies file: {cookies_file}")
-    elif cookies_browser:
-        cmd += ["--cookies-from-browser", cookies_browser]
-        print(f"      Using cookies from browser: {cookies_browser}")
-    else:
-        print("      WARNING: No cookies configured — YouTube may block this request.")
-        print("      Set YTDLP_COOKIES_FILE or YTDLP_COOKIES_BROWSER in your .env")
+    # Convert to MP3 using ffmpeg (pytubefix downloads as .mp4/webm)
+    result = subprocess.run(
+        [FFMPEG_PATH, "-y", "-i", downloaded, "-vn",
+         "-ar", "44100", "-ac", "2", "-b:a", "192k", output_path],
+        capture_output=True, text=True,
+    )
+    Path(downloaded).unlink(missing_ok=True)   # remove the raw download
 
-    if ffmpeg_dir:
-        cmd += ["--ffmpeg-location", ffmpeg_dir]
-
-    cmd.append(url)
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        raise RuntimeError(f"yt-dlp failed:\n{result.stderr.strip()}")
+        raise RuntimeError(f"ffmpeg conversion failed:\n{result.stderr.strip()}")
+
     print(f"      Saved to: {output_path}")
 
 

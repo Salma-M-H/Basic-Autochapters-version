@@ -7,3 +7,4 @@ moviepy
 pydub
 yt-dlp
 python-multipart
+pytubefix
