@@ -202,17 +202,33 @@ def download_audio_from_youtube(url: str, output_path: str) -> None:
     """Download audio from a YouTube URL and save as MP3 using yt-dlp."""
     print(f"[1/2] Downloading audio from YouTube: {url}")
 
-    ffmpeg_dir = str(Path(FFMPEG_PATH).parent) if FFMPEG_PATH != "ffmpeg" else None
+    ffmpeg_dir   = str(Path(FFMPEG_PATH).parent) if FFMPEG_PATH != "ffmpeg" else None
+    cookies_file = os.getenv("YTDLP_COOKIES_FILE")          # e.g. /app/cookies.txt
+    cookies_browser = os.getenv("YTDLP_COOKIES_BROWSER")    # e.g. "chrome" or "firefox"
 
     cmd = [
         "yt-dlp",
         "--extract-audio",
         "--audio-format", "mp3",
         "--audio-quality", "0",
+        "--no-playlist",
         "--output", output_path,
     ]
+
+    # ── Authentication: cookies file takes priority over browser ──
+    if cookies_file and Path(cookies_file).is_file():
+        cmd += ["--cookies", cookies_file]
+        print(f"      Using cookies file: {cookies_file}")
+    elif cookies_browser:
+        cmd += ["--cookies-from-browser", cookies_browser]
+        print(f"      Using cookies from browser: {cookies_browser}")
+    else:
+        print("      WARNING: No cookies configured — YouTube may block this request.")
+        print("      Set YTDLP_COOKIES_FILE or YTDLP_COOKIES_BROWSER in your .env")
+
     if ffmpeg_dir:
         cmd += ["--ffmpeg-location", ffmpeg_dir]
+
     cmd.append(url)
 
     result = subprocess.run(cmd, capture_output=True, text=True)
