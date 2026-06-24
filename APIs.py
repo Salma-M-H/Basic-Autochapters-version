@@ -335,10 +335,13 @@ def segment_summaries():
 def segment():
     """
     Segment the latest transcript from MongoDB, save segments back to MongoDB.
+    Skips re-segmentation if segments already exist for the current transcript.
     """
     transcript = _require_transcript()
-    segments   = segment_transcript(transcript, _client())
-    db.save_segments(segments)
+    segments   = db.get_segments()
+    if not segments:
+        segments = segment_transcript(transcript, _client())
+        db.save_segments(segments)
     return SegmentResponse(segments=_to_segment_out(segments))
 
 

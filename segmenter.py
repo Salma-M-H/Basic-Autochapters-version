@@ -26,6 +26,7 @@ Requirements:
 
 import os
 import re
+import time
 import json
 from pathlib import Path
 from dotenv import load_dotenv
@@ -39,7 +40,7 @@ load_dotenv(Path(__file__).parent / ".env")
 TRANSCRIPT_FILE     = "transcript.txt"
 OUTPUT_FILE         = "segments.json"
 GROQ_MODEL          = "llama-3.3-70b-versatile"
-MAX_LINES_PER_CHUNK = 250   # lines sent to the LLM in one call
+MAX_LINES_PER_CHUNK = 400   # lines sent to the LLM in one call
 # ============================================================
 
 
@@ -106,29 +107,38 @@ def numbered_chunk(lines: list[str], start_idx: int, end_idx: int) -> str:
 def segment_chunk(lines: list[str], start_idx: int, end_idx: int, client: Groq) -> list[dict]:
     """
     Send lines[start_idx..end_idx] to the LLM for segmentation.
-    Returns a list of dicts with start_line/end_line in original coordinates.
+    Retries up to 5 times on server/capacity errors with exponential backoff.
     """
     chunk_text = numbered_chunk(lines, start_idx, end_idx)
+    delay      = 5
 
-    r = client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=[
-            {"role": "system", "content": SEGMENTATION_PROMPT},
-            {"role": "user",   "content": chunk_text},
-        ],
-        temperature=0.2,
-        max_tokens=4096,
-    )
+    for attempt in range(1, 6):
+        try:
+            r = client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": SEGMENTATION_PROMPT},
+                    {"role": "user",   "content": chunk_text},
+                ],
+                temperature=0.2,
+                max_tokens=4096,
+            )
+            data = parse_json_list(r.choices[0].message.content)
+            data = sorted(data, key=lambda x: x["start_line"])
 
-    data = parse_json_list(r.choices[0].message.content)
-    data = sorted(data, key=lambda x: x["start_line"])
+            # Clamp line numbers to the actual chunk boundaries
+            for seg in data:
+                seg["start_line"] = max(start_idx, seg["start_line"])
+                seg["end_line"]   = min(end_idx,   seg["end_line"])
 
-    # Clamp line numbers to the actual chunk boundaries (model may hallucinate)
-    for seg in data:
-        seg["start_line"] = max(start_idx, seg["start_line"])
-        seg["end_line"]   = min(end_idx,   seg["end_line"])
+            return data
 
-    return data
+        except Exception as e:
+            if attempt == 5:
+                raise
+            print(f"      [{type(e).__name__}] Attempt {attempt}/5 failed. Retrying in {delay}s...")
+            time.sleep(delay)
+            delay *= 2
 
 
 def attach_timestamps(raw_segs: list[dict], lines: list[str]) -> list[dict]:
