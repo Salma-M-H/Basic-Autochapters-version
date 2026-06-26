@@ -23,7 +23,7 @@ Endpoints:
     POST /pipeline/youtube            — YouTube URL   → returns transcript + segments + description
 
 Run:
-  uvicorn api:app --reload
+  uvicorn APIs:app --reload
 """
 
 import os
@@ -139,20 +139,20 @@ async def _save_upload(file: UploadFile) -> tuple[str, str]:
 # TRANSCRIPTION
 # ─────────────────────────────────────────────
 
-# @app.post("/transcribe/video", response_model=TranscribeResponse)
-# async def transcribe_video(file: UploadFile = File(...)):
-#     """
-#     Upload a video file. Returns the full transcript as plain text.
-#     Each line is formatted as: [HH:MM:SS] spoken text
-#     """
-#     tmp_path, tmp_dir = await _save_upload(file)
-#     try:
-#         transcript = transcribe_from_video(tmp_path, _client())
-#         return TranscribeResponse(transcript=transcript)
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-#     finally:
-#         shutil.rmtree(tmp_dir, ignore_errors=True)
+@app.post("/transcribe/video", response_model=TranscribeResponse)
+async def transcribe_video(file: UploadFile = File(...)):
+    """
+    Upload a video file. Returns the full transcript as plain text.
+    Each line is formatted as: [HH:MM:SS] spoken text
+    """
+    tmp_path, tmp_dir = await _save_upload(file)
+    try:
+        transcript = transcribe_from_video(tmp_path, _client())
+        return TranscribeResponse(transcript=transcript)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 # @app.post("/transcribe/youtube", response_model=TranscribeResponse)
