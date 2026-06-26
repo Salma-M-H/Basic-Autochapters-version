@@ -153,7 +153,7 @@ def attach_timestamps(raw_segs: list[dict], lines: list[str]) -> list[dict]:
         start         = max(0, item.get("start_line", 0))
         end           = min(total_lines - 1, item.get("end_line", start))
         segment_lines = lines[start : end + 1]
-        text          = " ".join(clean_line(l) for l in segment_lines if clean_line(l))
+        text          = "\n".join(l for l in segment_lines if l.strip())
 
         start_time = next(
             (extract_timestamp(l) for l in segment_lines if extract_timestamp(l)),
