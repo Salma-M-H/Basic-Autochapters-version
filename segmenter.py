@@ -41,6 +41,7 @@ TRANSCRIPT_FILE     = "transcript.txt"
 OUTPUT_FILE         = "segments.json"
 GROQ_MODEL          = "llama-3.3-70b-versatile"
 MAX_LINES_PER_CHUNK = 400   # lines sent to the LLM in one call
+MIN_SEGMENT_SECONDS = 60    # merge segments shorter than this (e.g. 60 = 1 minute)
 # ============================================================
 
 
@@ -86,6 +87,79 @@ def extract_timestamp(line: str) -> str | None:
 
 def clean_line(line: str) -> str:
     return TIMESTAMP_RE.sub("", line).strip()
+
+
+def timestamp_to_seconds(ts: str) -> int:
+    """Convert 'HH:MM:SS' to total seconds."""
+    h, m, s = map(int, ts.split(":"))
+    return h * 3600 + m * 60 + s
+
+
+def segment_duration(seg: dict) -> int:
+    """Return duration of a segment in seconds."""
+    return timestamp_to_seconds(seg["end_time"]) - timestamp_to_seconds(seg["start_time"])
+
+
+def merge_two(a: dict, b: dict) -> dict:
+    """Merge segment b into segment a (a comes first chronologically)."""
+    return {
+        "index":      a["index"],
+        "title":      a["title"],           # keep the earlier segment's title/summary
+        "summary":    a["summary"],
+        "start_time": a["start_time"],
+        "end_time":   b["end_time"],
+        "text":       a["text"] + "\n" + b["text"],
+    }
+
+
+def merge_short_segments(segments: list[dict], min_seconds: int) -> list[dict]:
+    """
+    Repeatedly scan the segment list and merge any segment whose duration is
+    below min_seconds into its shorter neighbour, until no short segments remain
+    or only one segment is left.
+
+    Merge direction:
+    - If both neighbours exist, merge into whichever is shorter (so the merged
+      result is as balanced as possible).
+    - If only one neighbour exists (first or last segment), merge into that one.
+    """
+    if min_seconds <= 0:
+        return segments
+
+    segs = list(segments)          # shallow copy so we don't mutate the input
+
+    changed = True
+    while changed and len(segs) > 1:
+        changed = False
+        for i, seg in enumerate(segs):
+            if segment_duration(seg) < min_seconds:
+                # Decide merge direction
+                has_prev = i > 0
+                has_next = i < len(segs) - 1
+
+                if has_prev and has_next:
+                    # Merge into the shorter neighbour
+                    if segment_duration(segs[i - 1]) <= segment_duration(segs[i + 1]):
+                        merged = merge_two(segs[i - 1], seg)
+                        segs[i - 1 : i + 1] = [merged]
+                    else:
+                        merged = merge_two(seg, segs[i + 1])
+                        segs[i : i + 2] = [merged]
+                elif has_prev:
+                    merged = merge_two(segs[i - 1], seg)
+                    segs[i - 1 : i + 1] = [merged]
+                else:  # has_next only (first segment)
+                    merged = merge_two(seg, segs[i + 1])
+                    segs[i : i + 2] = [merged]
+
+                changed = True
+                break   # restart scan after every merge
+
+    # Re-index
+    for idx, seg in enumerate(segs):
+        seg["index"] = idx
+
+    return segs
 
 
 def parse_json_list(raw: str) -> list[dict]:
@@ -207,6 +281,15 @@ def segment_transcript(transcript: str, client: Groq) -> list[dict]:
 
     # Re-index and attach timestamps
     segments = attach_timestamps(all_raw_segs, lines)
+
+    # Merge segments that are too short
+    before = len(segments)
+    segments = merge_short_segments(segments, MIN_SEGMENT_SECONDS)
+    after = len(segments)
+    if before != after:
+        print(f"  Merged {before - after} short segment(s) "
+              f"(< {MIN_SEGMENT_SECONDS}s) → {after} segment(s) total.")
+
     for i, seg in enumerate(segments):
         seg["index"] = i
 
