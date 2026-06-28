@@ -6,9 +6,9 @@ and returns the result directly in the HTTP response.
 
 Endpoints:
 
-  TRANSCRIPTION
-    POST /transcribe/video            — upload video  → returns transcript
-    POST /transcribe/youtube          — YouTube URL   → returns transcript
+  TRANSCRIPTION  (no timestamps)
+    POST /transcribe/video            — upload video  → returns transcript (plain text, no timestamps)
+    POST /transcribe/youtube          — YouTube URL   → returns transcript (plain text, no timestamps)
 
   SEGMENTATION
     POST /segment                     — transcript in body → returns segments
@@ -42,6 +42,18 @@ from segmenter   import segment_transcript
 from describer   import build_segments_summary, generate_description
 
 load_dotenv(Path(__file__).parent / ".env")
+
+
+# ─────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────
+
+import re as _re
+_TIMESTAMP_RE = _re.compile(r"^\[\d{2}:\d{2}:\d{2}\]\s*", _re.MULTILINE)
+
+def strip_timestamps(transcript: str) -> str:
+    """Remove [HH:MM:SS] prefixes from every line of the transcript."""
+    return _TIMESTAMP_RE.sub("", transcript)
 
 
 # ─────────────────────────────────────────────
@@ -148,24 +160,24 @@ async def transcribe_video(file: UploadFile = File(...)):
     tmp_path, tmp_dir = await _save_upload(file)
     try:
         transcript = transcribe_from_video(tmp_path, _client())
-        return TranscribeResponse(transcript=transcript)
+        return TranscribeResponse(transcript=strip_timestamps(transcript))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-# @app.post("/transcribe/youtube", response_model=TranscribeResponse)
-# async def transcribe_youtube(body: YoutubeRequest):
-#     """
-#     Provide a YouTube URL. Returns the full transcript as plain text.
-#     Each line is formatted as: [HH:MM:SS] spoken text
-#     """
-#     try:
-#         transcript = transcribe_from_youtube(body.url, _client())
-#         return TranscribeResponse(transcript=transcript)
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
+@app.post("/transcribe/youtube", response_model=TranscribeResponse)
+async def transcribe_youtube(body: YoutubeRequest):
+    """
+    Provide a YouTube URL. Returns the full transcript as plain text.
+    Each line is formatted as: [HH:MM:SS] spoken text
+    """
+    try:
+        transcript = transcribe_from_youtube(body.url, _client())
+        return TranscribeResponse(transcript=strip_timestamps(transcript))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # # ─────────────────────────────────────────────
