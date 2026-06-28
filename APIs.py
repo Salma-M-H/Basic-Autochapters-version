@@ -60,8 +60,8 @@ def strip_timestamps(transcript: str) -> str:
 # Pydantic models
 # ─────────────────────────────────────────────
 
-class YoutubeRequest(BaseModel):
-    url: str
+# class YoutubeRequest(BaseModel):
+#     url: str
 
 class TranscriptRequest(BaseModel):
     transcript: str
@@ -167,17 +167,17 @@ async def transcribe_video(file: UploadFile = File(...)):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-@app.post("/transcribe/youtube", response_model=TranscribeResponse)
-async def transcribe_youtube(body: YoutubeRequest):
-    """
-    Provide a YouTube URL. Returns the full transcript as plain text.
-    Each line is formatted as: [HH:MM:SS] spoken text
-    """
-    try:
-        transcript = transcribe_from_youtube(body.url, _client())
-        return TranscribeResponse(transcript=strip_timestamps(transcript))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# @app.post("/transcribe/youtube", response_model=TranscribeResponse)
+# async def transcribe_youtube(body: YoutubeRequest):
+#     """
+#     Provide a YouTube URL. Returns the full transcript as plain text.
+#     Each line is formatted as: [HH:MM:SS] spoken text
+#     """
+#     try:
+#         transcript = transcribe_from_youtube(body.url, _client())
+#         return TranscribeResponse(transcript=strip_timestamps(transcript))
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 
 # # ─────────────────────────────────────────────
@@ -274,24 +274,24 @@ async def pipeline_video(file: UploadFile = File(...)):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-@app.post("/pipeline/youtube", response_model=PipelineResponse)
-async def pipeline_youtube(body: YoutubeRequest):
-    """
-    Provide a YouTube URL and run the full pipeline end-to-end:
-      1. Download audio + transcribe
-      2. Segment into topics
-      3. Generate content description
-    Returns all three results in one response.
-    """
-    try:
-        client      = _client()
-        transcript  = transcribe_from_youtube(body.url, client)
-        segments    = segment_transcript(transcript, client)
-        description = generate_description(build_segments_summary(segments), client)
-        return PipelineResponse(
-            transcript=transcript,
-            segments=_to_segment_out(segments),
-            description=DescribeResponse(**description),
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# @app.post("/pipeline/youtube", response_model=PipelineResponse)
+# async def pipeline_youtube(body: YoutubeRequest):
+#     """
+#     Provide a YouTube URL and run the full pipeline end-to-end:
+#       1. Download audio + transcribe
+#       2. Segment into topics
+#       3. Generate content description
+#     Returns all three results in one response.
+#     """
+#     try:
+#         client      = _client()
+#         transcript  = transcribe_from_youtube(body.url, client)
+#         segments    = segment_transcript(transcript, client)
+#         description = generate_description(build_segments_summary(segments), client)
+#         return PipelineResponse(
+#             transcript=transcript,
+#             segments=_to_segment_out(segments),
+#             description=DescribeResponse(**description),
+#         )
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
